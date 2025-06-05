@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../shared/providers/auth_provider.dart';
+import '../../../shared/providers/demand_provider.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
+import '../../../data/models/models.dart';
+import '../../../data/mock_data.dart';
 import '../seller/seller_dashboard.dart';
 import 'create_demand_screen.dart';
+import 'package:intl/intl.dart';
 
 class BuyerDashboard extends StatelessWidget {
   @override
@@ -140,19 +144,84 @@ class BuyerDashboard extends StatelessWidget {
 
             SizedBox(height: 24),
 
-            // Recent Demands Section
+            // Your Demands Section
             Text(
-              'Your Recent Demands',
+              'Your Demands',
               style: AppTextStyles.title,
             ),
             SizedBox(height: 12),
 
             Expanded(
-              child: ListView(
-                children: [
-                  _buildDemandCard('Rice', '200 kg', '৳40-45/kg', 'Urgent', AppColors.error),
-                  _buildDemandCard('Onion', '80 kg', '৳35-40/kg', 'This Week', AppColors.accent),
-                ],
+              child: Consumer<DemandProvider>(
+                builder: (context, demandProvider, child) {
+                  final userDemands = demandProvider.getDemandsByBuyer(user.id);
+                  
+                  if (userDemands.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 64,
+                            color: AppColors.textSecondary.withOpacity(0.5),
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No demands yet',
+                            style: AppTextStyles.title.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Create your first demand to find crops',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  // Sort demands: Active first, then by date
+                  final sortedDemands = List<Demand>.from(userDemands);
+                  sortedDemands.sort((a, b) {
+                    // Active demands first
+                    if (a.status == DemandStatus.posted && b.status != DemandStatus.posted) {
+                      return -1;
+                    }
+                    if (a.status != DemandStatus.posted && b.status == DemandStatus.posted) {
+                      return 1;
+                    }
+                    
+                    // Within same status, sort by date (newest first)
+                    return b.createdAt.compareTo(a.createdAt);
+                  });
+                  
+                  return ListView.builder(
+                    itemCount: sortedDemands.length,
+                    itemBuilder: (context, index) {
+                      final demand = sortedDemands[index];
+                      final crop = MockData.getCropById(demand.cropId);
+                      final isCompleted = demand.status == DemandStatus.completed;
+                      
+                      return _buildDemandCard(
+                        crop?.displayName ?? 'Unknown Crop',
+                        demand.quantityNeeded,
+                        demand.budgetRange ?? 'Budget not set',
+                        _getUrgencyText(demand.urgency),
+                        _getUrgencyColor(demand.urgency),
+                        _getStatusText(demand.status),
+                        _getStatusColor(demand.status),
+                        isCompleted,
+                        demand.createdAt,
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -205,26 +274,38 @@ class BuyerDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildDemandCard(String crop, String quantity, String budget, String urgency, Color urgencyColor) {
+  Widget _buildDemandCard(
+    String crop, 
+    String quantity, 
+    String budget, 
+    String urgency, 
+    Color urgencyColor,
+    String status,
+    Color statusColor,
+    bool isCompleted,
+    DateTime createdAt,
+  ) {
     return Container(
       margin: EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isCompleted ? Colors.grey.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isCompleted ? Colors.grey.shade300 : AppColors.border,
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppColors.info.withOpacity(0.1),
+              color: (isCompleted ? Colors.grey : AppColors.info).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.shopping_cart,
-              color: AppColors.info,
+              color: isCompleted ? Colors.grey : AppColors.info,
               size: 24,
             ),
           ),
@@ -233,24 +314,140 @@ class BuyerDashboard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(crop, style: AppTextStyles.cropName),
-                Text('Need $quantity • $budget', style: AppTextStyles.bodySmall),
+                Text(
+                  crop, 
+                  style: AppTextStyles.cropName.copyWith(
+                    color: isCompleted ? Colors.grey.shade600 : null,
+                  ),
+                ),
+                Text(
+                  'Need $quantity • $budget', 
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: isCompleted ? Colors.grey.shade500 : null,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: urgencyColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: urgencyColor.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        urgency,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: urgencyColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      _formatDate(createdAt),
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: Colors.grey.shade500,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
           Container(
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: urgencyColor,
+              color: statusColor,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              urgency,
-              style: AppTextStyles.status,
+              status,
+              style: AppTextStyles.status.copyWith(
+                color: Colors.white,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _getUrgencyText(UrgencyLevel urgency) {
+    switch (urgency) {
+      case UrgencyLevel.urgent:
+        return 'Urgent';
+      case UrgencyLevel.week:
+        return 'This Week';
+      case UrgencyLevel.flexible:
+        return 'Flexible';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Color _getUrgencyColor(UrgencyLevel urgency) {
+    switch (urgency) {
+      case UrgencyLevel.urgent:
+        return AppColors.error;
+      case UrgencyLevel.week:
+        return AppColors.accent;
+      case UrgencyLevel.flexible:
+        return AppColors.success;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusText(DemandStatus status) {
+    switch (status) {
+      case DemandStatus.draft:
+        return 'Draft';
+      case DemandStatus.posted:
+        return 'Active';
+      case DemandStatus.matched:
+        return 'Matched';
+      case DemandStatus.inTransaction:
+        return 'In Progress';
+      case DemandStatus.completed:
+        return 'Fulfilled';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Color _getStatusColor(DemandStatus status) {
+    switch (status) {
+      case DemandStatus.draft:
+        return Colors.grey;
+      case DemandStatus.posted:
+        return AppColors.info;
+      case DemandStatus.matched:
+        return AppColors.accent;
+      case DemandStatus.inTransaction:
+        return AppColors.primary;
+      case DemandStatus.completed:
+        return AppColors.success;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        return '${difference.inMinutes}m ago';
+      }
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return DateFormat('MMM d').format(date);
+    }
   }
 }
