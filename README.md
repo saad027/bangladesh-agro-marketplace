@@ -1,3 +1,6 @@
+flutter run for testing on phone (usb debugging on)
+flutter run -d chrome lib/main_admin.dart for testing on chrome (admin dashboard)
+Sorry for the AI slop below!
 # 🌾 Bangladesh Agro Marketplace
 
 An agricultural marketplace Flutter app connecting farmers, buyers, and administrators in Bangladesh. This is a prototype demonstrating real-time crop listing management and matching system.
